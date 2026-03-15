@@ -20,16 +20,21 @@ TODO : Take some sort of Median value over period of exchange
 
 */
 
+
+#define RADIOLIB_LOW_LEVEL (1)
+
 #include <RadioLib.h>
 #include <cmath>
 #include <utility>
 #include <cstdint>
 
-#define RADIOLIB_LOW_LEVEL (1)
+#define NUMBER_OF_FACTORS_PER_SFBW 160
 #define BW 1625000
 #define BW_ID 2
-#define SF 6
+#define SF 10
 #define SAMPLE_SIZE 100
+
+SX1280 radio = new Module(33, 26, 27, 25);
 
 const uint16_t RNG_CALIB[3][6] = {
     { 10299, 10271, 10244, 10242, 10230, 10246 },
@@ -221,9 +226,7 @@ void communicationPhase() {
     //  MASTER TRANSMITTING LORA PACKET
     //=========================================
 
-    Serial.println(F("[COMM] Sent LoRa Packet"));
-    String str = "Exchange LoRa packet";
-    state = radio.transmit(str);
+    String str;
 
     //=========================================
     //  MASTER LISTETING LORA RESPONSE
@@ -232,70 +235,67 @@ void communicationPhase() {
     // set the function that will be called
     // when new packet is received
     radio.setPacketReceivedAction(setFlag);
-    
-    Serial.print(F("[COMM] Waiting LoRa ACK ... "));
-    state = radio.startReceive();
-    if (state == RADIOLIB_ERR_NONE) {
-        Serial.println(F("success!"));
-    } else {
-        Serial.print(F("failed, code "));
-        Serial.println(state);
-        while (true) { delay(10); }
-    }
 
-    while(!receivedFlag) {
-        // reset flag
-        receivedFlag = false;
+    while(true) {
 
-        String str;
-        state = radio.readData(str);
+        do {
+            Serial.println(F("[COMM] Sent LoRa Packet"));
 
-        // you can also read received data as byte array
-        /*
+            byte byteArr[8] = {0x01, 0x23, 0x45, 0x67,
+                        0x89, 0xAB, 0xCD, 0xEF};
+            state = radio.transmit(byteArr, 1);
+            
+            Serial.print(F("[COMM] Waiting LoRa ACK ... "));
+            state = radio.startReceive();
+            if (state == RADIOLIB_ERR_NONE) {
+                Serial.println(F("success!"));
+            } else {
+                Serial.print(F("failed, code "));
+                Serial.println(state);
+                while (true) { delay(10); }
+            }
+
+            delay(2000);
+        } while(!receivedFlag);
+
         byte byteArr[8];
         int numBytes = radio.getPacketLength();
-        int state = radio.readData(byteArr, numBytes);
-        */
+        state = radio.readData(byteArr, numBytes);
+        
+        if (byteArr[0] == 0x02) break;
 
-        if (state == RADIOLIB_ERR_NONE) {
-            // packet was successfully received
-            Serial.println(F("[SX1280] Received packet!"));
+        Serial.println(F("Received someone else LoRa packet"));
+    }
 
-            // print data of the packet
-            Serial.print(F("[SX1280] Data:\t\t"));
-            Serial.println(str);
+    if (state == RADIOLIB_ERR_NONE) {
+        // packet was successfully received
+        Serial.println(F("[SX1280] Received packet!"));
 
-            // print RSSI (Received Signal Strength Indicator)
-            Serial.print(F("[SX1280] RSSI:\t\t"));
-            Serial.print(radio.getRSSI());
-            Serial.println(F(" dBm"));
+        // print RSSI (Received Signal Strength Indicator)
+        Serial.print(F("[SX1280] RSSI:\t\t"));
+        Serial.print(radio.getRSSI());
+        Serial.println(F(" dBm"));
 
-            // print SNR (Signal-to-Noise Ratio)
-            Serial.print(F("[SX1280] SNR:\t\t"));
-            Serial.print(radio.getSNR());
-            Serial.println(F(" dB"));
+        // print SNR (Signal-to-Noise Ratio)
+        Serial.print(F("[SX1280] SNR:\t\t"));
+        Serial.print(radio.getSNR());
+        Serial.println(F(" dB"));
 
-            // print the Frequency Error
-            // of the last received packet
-            Serial.print(F("[SX1280] Frequency Error:\t"));
-            FREQ_ERROR = radio.getFrequencyError();
-            Serial.print(FREQ_ERROR);
-            Serial.println(F(" Hz"));
-        } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
-            // packet was received, but is malformed
-            Serial.println(F("CRC error!"));
-        } else {
-            // some other error occurred
-            Serial.print(F("failed, code "));
-            Serial.println(state);
-        }
+        // print the Frequency Error
+        // of the last received packet
+        Serial.print(F("[SX1280] Frequency Error:\t"));
+        FREQ_ERROR = radio.getFrequencyError();
+        Serial.print(FREQ_ERROR);
+        Serial.println(F(" Hz"));
+    } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
+        // packet was received, but is malformed
+        Serial.println(F("CRC error!"));
+    } else {
+        // some other error occurred
+        Serial.print(F("failed, code "));
+        Serial.println(state);
     }
 }
-
-int rngCounter;
-int rngValid;
-int rngTimedOut;
-int rngFail;
 
 std::pair<int, int> rawRng[SAMPLE_SIZE];
 float distance[SAMPLE_SIZE];
@@ -324,13 +324,18 @@ float computeStdDev(float mean, float *sample, int total) {
 }
 
 int32_t rangingRSSI() {
-  uint8_t data[1] = { 0 };
-  int state = radio.readRegister(0x0964, data, 1);
+    uint8_t data[1] = { 0 };
+    int state = radio.readRegister(0x0964, data, 1);
 
-  return ( (int32_t) (~data[0] + 1) ) / 2;
+    // return ( (int32_t) (~data[0] + 1) ) / 2;
+    return data[0];
 }
 
 void rangingPhase() {
+    int rngCounter = 0;
+    int rngValid = 0;
+    int rngTimedOut = 0;
+    int rngFail = 0;
 
     //=========================================
     // GATHERING RANGING SAMPLE
@@ -375,7 +380,10 @@ void rangingPhase() {
             rngFail++;
         }
 
+        Serial.print(" ");
+        Serial.print(rngCounter);
         rngCounter++;
+        delay(20);
     }
 
     //=========================================
@@ -414,6 +422,10 @@ void rangingPhase() {
         if (rawRng[i].second >= 140 || rawRng[i].second < 0) {
             Serial.print(F("WARNING, Ranging RSSI should be in range [0, 140]: "));
             Serial.println(rawRng[i].second);
+
+            while(1) {
+                delay(10);
+            }
         }
         calibLNAGain[i] = distance[i] - RangingCorrectionSF9BW0800[rawRng[i].second];
 
@@ -466,33 +478,33 @@ void rangingPhase() {
     Serial.println(F("Raw Distance Measured:"));
     Serial.print(F("Mean:\t"));
     Serial.print(meanVals[0]);
-    Serial.print(F("Standard Deviation:\t"));
+    Serial.print(F("\tStandard Deviation:\t"));
     Serial.print(stdDevVals[0]);
-    Serial.print(F("Median:\t"));
+    Serial.print(F("\tMedian:\t"));
     Serial.println(medianVals[0]);
 
     Serial.println(F("Clock Drift Calibration:"));
     Serial.print(F("Mean:\t"));
     Serial.print(meanVals[1]);
-    Serial.print(F("Standard Deviation:\t"));
+    Serial.print(F("\tStandard Deviation:\t"));
     Serial.print(stdDevVals[1]);
-    Serial.print(F("Median:\t"));
+    Serial.print(F("\tMedian:\t"));
     Serial.println(medianVals[1]);
 
     Serial.println(F("LNA Gain Calibration:"));
     Serial.print(F("Mean:\t"));
     Serial.print(meanVals[2]);
-    Serial.print(F("Standard Deviation:\t"));
+    Serial.print(F("\tStandard Deviation:\t"));
     Serial.print(stdDevVals[2]);
-    Serial.print(F("Median:\t"));
+    Serial.print(F("\tMedian:\t"));
     Serial.println(medianVals[2]);
     
     Serial.println(F("Final Calibration:"));
     Serial.print(F("Mean:\t"));
     Serial.print(meanVals[3]);
-    Serial.print(F("Standard Deviation:\t"));
+    Serial.print(F("\tStandard Deviation:\t"));
     Serial.print(stdDevVals[3]);
-    Serial.print(F("Median:\t"));
+    Serial.print(F("\tMedian:\t"));
     Serial.println(medianVals[3]);
 
     Serial.println(F("Post-processind done!\nMeasuring new batch ... \n"));
