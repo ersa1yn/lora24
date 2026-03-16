@@ -29,14 +29,17 @@ TODO : Take some sort of Median value over period of exchange
 #include <cstdint>
 
 #define NUMBER_OF_FACTORS_PER_SFBW 160
-#define BW 1625000
-#define BW_ID 2
-#define SF 10
+#define DEFAULT_BW 1625000
+#define DEFAULT_SF 10
 #define SAMPLE_SIZE 100
+
+uint32_t BW = DEFAULT_BW
+uint8_t BW_ID = (DEFAULT_BW == 1625000 ? 2 : DEFAULT_BW == 812500 ? 1 : 0);
+uint8_t SF = DEFAULT_SF;
 
 SX1280 radio = new Module(33, 26, 27, 25);
 
-const uint16_t RNG_CALIB[3][6] = {
+uint16_t RNG_CALIB[3][6] = {
     { 10299, 10271, 10244, 10242, 10230, 10246 },
     { 11486, 11474, 11453, 11426, 11417, 11401 },
     { 30000, 13493, 13528, 13515, 13430, 13376 }
@@ -211,40 +214,39 @@ const double RangingCorrectionSF9BW0800[NUMBER_OF_FACTORS_PER_SFBW] =
     10.1564,
     10.1564,
    
-}; 
+};
 
 int state;
 bool receivedFlag = false;
-float FREQ_ERROR;
+float FREQ_ERROR = 0x0;
 
 void setFlag(void) {
     receivedFlag = true;
 }
 
-void communicationPhase() {
-    //=========================================
-    //  MASTER TRANSMITTING LORA PACKET
-    //=========================================
-
-    String str;
-
-    //=========================================
-    //  MASTER LISTETING LORA RESPONSE
-    //=========================================
-
+void communicationPhase() {    
     // set the function that will be called
     // when new packet is received
     radio.setPacketReceivedAction(setFlag);
 
+    // Try to communicate with right tranceiver
     while(true) {
-
         do {
+            //=========================================
+            //  MASTER TRANSMITTING LORA PACKET
+            //=========================================
+            
             Serial.println(F("[COMM] Sent LoRa Packet"));
 
-            byte byteArr[8] = {0x01, 0x23, 0x45, 0x67,
-                        0x89, 0xAB, 0xCD, 0xEF};
+            byte byteArr[8] = { 0x0 };
+            byteArr[0] = 0x1;
+            byteArr[1] = 0x2;
             state = radio.transmit(byteArr, 1);
             
+            //=========================================
+            //  MASTER LISTENING LORA RESPONSE
+            //=========================================
+
             Serial.print(F("[COMM] Waiting LoRa ACK ... "));
             state = radio.startReceive();
             if (state == RADIOLIB_ERR_NONE) {
@@ -345,7 +347,7 @@ void rangingPhase() {
 
     while(rngCounter < SAMPLE_SIZE) {
 
-        state = radio.range(true, 0x12345678/*, RNG_CALIB*/);
+        state = radio.range(true, 0x12345678, RNG_CALIB);
 
         if (state == RADIOLIB_ERR_NONE) {
             // Serial.println(F("success!"));
@@ -427,7 +429,7 @@ void rangingPhase() {
                 delay(10);
             }
         }
-        calibLNAGain[i] = distance[i] - RangingCorrectionSF9BW0800[rawRng[i].second];
+        calibLNAGain[i] = distance[i] + RangingCorrectionSF9BW0800[rawRng[i].second];
 
         calibFinal[i] = calibClkDrift[i] + calibLNAGain[i] - distance[i]; 
     }
