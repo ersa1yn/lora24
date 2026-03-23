@@ -25,9 +25,9 @@ TODO : Take some sort of Median value over period of exchange
 #include <cmath>
 #include <cstdint>
 
-#define SAMPLE_SIZE 100
-#define DEVICE_ID 0x0002
-#define TARGET_ID 0x0001
+#define DEVICE_ID  static_cast<uint16_t>(0x0002)
+#define DEFAULT_BW static_cast<float>(812.5)
+#define DEFAULT_SF static_cast<uint8_t>(7)
 
 uint32_t BW[3] = { 406250, 812500, 1625000 };
 
@@ -40,39 +40,75 @@ void setFlag(void) {
     receivedFlag = true;
 }
 
-void communicationPhase(uint8_t BW_ID, uint8_t SF) {
-    //=========================================
-    //  SLAVE LISTENING LORA PACKET
-    //=========================================
+void communicationPhase() {
+    
+    radio.setBandwidth(DEFAULT_BW);
+    radio.setSpreadingFactor(DEFAULT_SF);
 
     // set the function that will be called
     // when new packet is received
     radio.setPacketReceivedAction(setFlag);
 
-    while (true) {
+    uint8_t packetRecipe[8];
+    
 
+    while (true) {
+        //=========================================
+        // SLAVE LISTENING LORA PACKET
+        //=========================================
+
+        Serial.print(F("[COMM] Waiting LoRa Packet "));
+        receivedFlag = false;
+        state = radio.startReceive();
         do {
-            Serial.print(F("[COMM] Waiting LoRa Packet ... "));
-            state = radio.startReceive();
-            if (state == RADIOLIB_ERR_NONE) {
-                Serial.println(F("success!"));
-            } else {
+            Serial.print(F("."));
+            if (state != RADIOLIB_ERR_NONE) {
                 Serial.print(F("failed, code "));
                 Serial.println(state);
                 while (true) { delay(10); }
             }
 
-            delay(2000);
+            delay(500);
         } while (!receivedFlag);
+        Serial.println(F("\nsuccess!"));
 
-        byte byteArr[8];
+        
         int numBytes = radio.getPacketLength();
-        state = radio.readData(byteArr, numBytes);
+        if (numBytes > 8) numBytes = 8;
+        state = radio.readData(packetRecipe, numBytes);
 
-        if ((byteArr[2] << 8) | byteArr[3] == DEVICE_ID) break;
+        uint16_t target = (static_cast<uint16_t>(packetRecipe[2]) << 8) | 
+                          static_cast<uint16_t>(packetRecipe[3]); 
+        if (target == DEVICE_ID) break;
 
         Serial.println(F("Received someone else LoRa packet"));
     }
+
+    //=========================================
+    // SLAVE TRANSMITTING LORA RESPONSE
+    //=========================================
+
+    Serial.println(F("[COMM] Sent LoRa Packet Response"));
+    // 0 - src ID MSB
+    // 1 - src ID LSB
+    // 2 - dst ID MSB
+    // 3 - dst ID LSB
+    // 4 - BW_ID [7:4] & SF [3:0]
+    // 5 - RF_FREQ_ID <= Carrier wave RF, To be Defined
+    // 6 - SAMPLE_SIZE MSB
+    // 7 - SAMPLE_SIZE LSB
+    
+    uint8_t payload[8] = { 
+        DEVICE_ID >> 8, DEVICE_ID & 0xFF, 
+        packetRecipe[0], packetRecipe[1], 
+        packetRecipe[4], packetRecipe[5], 
+        packetRecipe[6], packetRecipe[7]};
+
+    state = radio.transmit(payload, 8);
+
+    //=========================================
+    // RECEIVED PACKET'S LOG MESSAGE 
+    //=========================================
 
     if (state == RADIOLIB_ERR_NONE) {
         Serial.println(F("[SX1280] Received packet!"));
@@ -97,25 +133,20 @@ void communicationPhase(uint8_t BW_ID, uint8_t SF) {
     }
 
     //=========================================
-    //  SLAVE TRANSMITTING LORA RESPONSE
+    // START RANGING PHASE WITH RECEIVED PARAMS
     //=========================================
 
-    Serial.println(F("[COMM] Sent LoRa Packet Response"));
-    // 0 - src ID MSB
-    // 1 - src ID LSB
-    // 2 - dst ID MSB
-    // 3 - dst ID LSB
-    // 4 - BW_ID [7:4] & SF [3:0]
-    // 5 - RF_FREQ_ID <= To be Defined
-    byte byteArr[6] = { 
-        DEVICE_ID >> 8, DEVICE_ID & 0xFF, 
-        TARGET_ID >> 8, TARGET_ID & 0xFF, 
-        (BW_ID << 4) | SF, 0x0};
+    uint8_t BW_ID = (packetRecipe[4] & 0xf0) >> 4;
+    uint8_t SF = packetRecipe[4] & 0x0f;
+    uint16_t SAMPLE_SIZE = (static_cast<uint16_t>(packetRecipe[6]) << 8) | 
+                            static_cast<uint16_t>(packetRecipe[7]); 
 
-    state = radio.transmit(byteArr, 6);
+    radio.setBandwidth(static_cast<float>(BW[BW_ID] / 1000.0));
+    radio.setSpreadingFactor(SF);
+    rangingPhase(BW_ID, SF, SAMPLE_SIZE);
 }
 
-void rangingPhase(uint8_t BW_ID, uint8_t SF) {
+void rangingPhase(uint8_t BW_ID, uint8_t SF, uint16_t SAMPLE_SIZE) {
     int rngCounter = 0;
     int rngValid = 0;
     int rngTimedOut = 0;
@@ -139,11 +170,10 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF) {
         }
 
         rngCounter++;
-        delay(20);
     }
 
     //=========================================
-    //  POST-PROCESSING RANGING OUTPUT
+    // RANGING OUTPUT
     //=========================================
 
     Serial.print(F("Ranging Done! BandWidth: "));
@@ -157,7 +187,11 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF) {
     Serial.println(rngTimedOut);
     Serial.print(F("Failed:\t"));
     Serial.println(rngFail);
-    Serial.println(F("Post-processing ...\n"));
+    Serial.println(F("\nSwitching to communication phase ...\n"));
+
+    radio.setBandwidth(DEFAULT_BW);
+    radio.setSpreadingFactor(DEFAULT_SF);
+    communicationPhase();
 }
 
 void setup() {
@@ -177,17 +211,5 @@ void setup() {
 }
 
 void loop() {
-    //=========================================
-    //  RUN IN EACH CONFIGURATION
-    //=========================================
-
-    for (uint8_t BW_ID = 0; BW_ID < 3; BW_ID++) {
-        for (uint8_t SF = 0; SF < 6; SF++) {
-            radio.setBandwidth( ((float) BW[BW_ID]) / 1000.0 );
-            radio.setSpreadingFactor( SF );
-
-            communicationPhase(BW_ID, SF);
-            rangingPhase(BW_ID, SF);
-        }
-    }
+    communicationPhase();
 }
