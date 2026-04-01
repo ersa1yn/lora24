@@ -35,6 +35,7 @@ TODO : Take some sort of Median value over period of exchange
 #define TARGET_ID static_cast<uint16_t>(0x0002)
 #define DEFAULT_BW static_cast<float>(812.5)
 #define DEFAULT_SF static_cast<uint8_t>(7)
+#define DEFAULT_RF static_cast<float>(2400.0)
 
 uint32_t BW[3] = { 406250, 812500, 1625000 };
 
@@ -104,6 +105,7 @@ void setFlag(void) {
 void communicationPhase(uint8_t BW_ID, uint8_t SF) {
     radio.setBandwidth(DEFAULT_BW);
     radio.setSpreadingFactor(DEFAULT_SF);
+    radio.setFrequency(DEFAULT_RF);
 
     // set the function that will be called
     // when new packet is received
@@ -127,6 +129,7 @@ void communicationPhase(uint8_t BW_ID, uint8_t SF) {
     // Try to communicate with right tranceiver
     while(true) {
         receivedFlag = false;
+        digitalWrite(LED_BUILTIN, HIGH);
         do {
             //=========================================
             //  MASTER TRANSMITTING LORA PACKET
@@ -152,6 +155,7 @@ void communicationPhase(uint8_t BW_ID, uint8_t SF) {
             delay(500);
         } while (!receivedFlag);
         Serial.println(F("\nsuccess!"));
+        digitalWrite(LED_BUILTIN, LOW);
         
         uint8_t packetRecipe[8];
         int numBytes = radio.getPacketLength();
@@ -191,7 +195,7 @@ void communicationPhase(uint8_t BW_ID, uint8_t SF) {
         Serial.println(state);
     }
 
-    radio.setBandwidth(static_cast<float>(BW[BW_ID] / 1000.0));
+    radio.setBandwidth(static_cast<float>(BW[BW_ID]) / 1000.0);
     radio.setSpreadingFactor(SF);
     rangingPhase(BW_ID, SF);
 }
@@ -209,6 +213,8 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF) {
     rngTimedOut = 0;
     rngFail = 0;
 
+    int chnCounter = 0;
+
     //=========================================
     // GATHERING RANGING SAMPLE
     //=========================================
@@ -216,8 +222,14 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF) {
     Serial.println(F("Ranging ... "));
 
     while(rngCounter < SAMPLE_SIZE) {
+        
+        // radio.setFrequency(CHANNELS[chnCounter] / 1e6f);
+        // if (chnCounter % 2) chnCounter--; else chnCounter++;
+        // chnCounter = (chnCounter + 1) % 40;
 
+        digitalWrite(LED_BUILTIN, HIGH);
         state = radio.range(true, TARGET_ID/*, RNG_CALIB*/);
+        digitalWrite(LED_BUILTIN, LOW);
 
         if (state == RADIOLIB_ERR_NONE) {            
             rawRng[rngValid] = radio.getRangingResultRaw();
@@ -233,7 +245,6 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF) {
         Serial.print(" ");
         Serial.print(rngCounter);
         rngCounter++;
-        delay(5);
     }
 
     Serial.print(F("Ranging Done! BandWidth: "));
@@ -250,21 +261,21 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF) {
 
 }
 
-float computeMean(float *sample, int total) {
+float computeMean(float *sample, uint16_t total) {
     float res = 0.0;
     for (int i = 0; i < total; i++) {
         res += sample[i];
     }
-    return res / (float) total;
+    return res / total;
 }
 
-float computeStdDev(float mean, float *sample, int total) {
+float computeStdDev(float mean, float *sample, uint16_t total) {
     float res = 0.0;
     for (int i = 0; i < total; i++) {
         float temp = mean - sample[i];
         res += temp * temp;
     }
-    res = res / (float) total;
+    res = res / total;
     res = sqrt(res);
 
     return res;
@@ -284,9 +295,10 @@ void postProcess(uint8_t BW_ID, uint8_t SF) {
     // distance [m] = complement2( register ) / bandwidth[Hz] * A, 
     // where A = 150 / (2^12 / 1e6) = 36621.09375
     for (int i = 0; i < rngValid; i++) {
-        distance[i] = ( (float) (~rawRng[i] + 1) ) / ( (float) BW[BW_ID] ) * 36621.09375;
+        distance[i] = (static_cast<float>(~rawRng[i] + 1) / static_cast<float>(BW[BW_ID]))
+            * 36621.09375f;
 
-        calibClkDrift[i] = distance[i] - (RNG_FGRAD[BW_ID][SF - 5] * FREQ_ERROR / 1000.0);
+        calibClkDrift[i] = distance[i] - (RNG_FGRAD[BW_ID][SF - 5] * FREQ_ERROR / 1e3f);
 
         if (rngRSSI[i] > 159) {
             Serial.print(F("WARNING, Ranging RSSI should be in range [0, 160): "));
@@ -296,7 +308,7 @@ void postProcess(uint8_t BW_ID, uint8_t SF) {
                 delay(10);
             }
         }
-        calibLNAGain[i] = distance[i] + RNG_LUT[BW_ID][SF][rngRSSI[i]];
+        calibLNAGain[i] = distance[i] + RNG_LUT[BW_ID][SF - 5][rngRSSI[i]];
 
         calibFinal[i] = calibClkDrift[i] + calibLNAGain[i] - distance[i];
     }
@@ -477,6 +489,8 @@ void runAllConfigs() {
 }
 
 void setup() {
+    pinMode(LED_BUILTIN, OUTPUT);
+
     Serial.begin(9600);
 
     // initialize SX1280 with default settings

@@ -28,8 +28,21 @@ TODO : Take some sort of Median value over period of exchange
 #define DEVICE_ID  static_cast<uint16_t>(0x0002)
 #define DEFAULT_BW static_cast<float>(812.5)
 #define DEFAULT_SF static_cast<uint8_t>(7)
+#define DEFAULT_RF static_cast<float>(2400.0)
 
 uint32_t BW[3] = { 406250, 812500, 1625000 };
+
+const uint32_t CHANNELS[40] =
+{
+    2450000000, 2402000000, 2476000000, 2436000000, 2430000000,
+    2468000000, 2458000000, 2416000000, 2424000000, 2478000000,
+    2456000000, 2448000000, 2462000000, 2472000000, 2432000000,
+    2446000000, 2422000000, 2442000000, 2460000000, 2474000000,
+    2414000000, 2464000000, 2454000000, 2444000000, 2404000000,
+    2434000000, 2410000000, 2408000000, 2440000000, 2452000000,
+    2480000000, 2426000000, 2428000000, 2466000000, 2418000000,
+    2412000000, 2406000000, 2470000000, 2438000000, 2420000000
+};
 
 SX1280 radio = new Module(33, 26, 27, 25);
 
@@ -41,9 +54,9 @@ void setFlag(void) {
 }
 
 void communicationPhase() {
-    
     radio.setBandwidth(DEFAULT_BW);
     radio.setSpreadingFactor(DEFAULT_SF);
+    radio.setFrequency(DEFAULT_RF);
 
     // set the function that will be called
     // when new packet is received
@@ -57,6 +70,7 @@ void communicationPhase() {
         // SLAVE LISTENING LORA PACKET
         //=========================================
 
+        digitalWrite(LED_BUILTIN, HIGH);
         Serial.print(F("[COMM] Waiting LoRa Packet "));
         receivedFlag = false;
         state = radio.startReceive();
@@ -72,6 +86,7 @@ void communicationPhase() {
         } while (!receivedFlag);
         Serial.println(F("\nsuccess!"));
 
+        digitalWrite(LED_BUILTIN, LOW);
         
         int numBytes = radio.getPacketLength();
         if (numBytes > 8) numBytes = 8;
@@ -152,6 +167,8 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF, uint16_t SAMPLE_SIZE) {
     int rngTimedOut = 0;
     int rngFail = 0;
 
+    int chnCounter = 0;
+
     //=========================================
     // GATHERING RANGING SAMPLE
     //=========================================
@@ -159,7 +176,13 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF, uint16_t SAMPLE_SIZE) {
     Serial.println(F("Ranging ... "));
 
     while (rngCounter < SAMPLE_SIZE) {
+        // radio.setFrequency(CHANNELS[chnCounter] / 1e6f);
+        // chnCounter = (chnCounter + 1) % 40;
+        // if (chnCounter % 2) chnCounter--; else chnCounter++;
+
+        digitalWrite(LED_BUILTIN, HIGH);
         state = radio.range(false, DEVICE_ID /*, RNG_CALIB*/);
+        digitalWrite(LED_BUILTIN, LOW);
 
         if (state == RADIOLIB_ERR_NONE) {
             rngValid++;
@@ -169,6 +192,8 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF, uint16_t SAMPLE_SIZE) {
             rngFail++;
         }
 
+        Serial.print(" ");
+        Serial.print(rngCounter);
         rngCounter++;
     }
 
@@ -189,12 +214,12 @@ void rangingPhase(uint8_t BW_ID, uint8_t SF, uint16_t SAMPLE_SIZE) {
     Serial.println(rngFail);
     Serial.println(F("\nSwitching to communication phase ...\n"));
 
-    radio.setBandwidth(DEFAULT_BW);
-    radio.setSpreadingFactor(DEFAULT_SF);
     communicationPhase();
 }
 
 void setup() {
+    pinMode(LED_BUILTIN, OUTPUT);
+
     Serial.begin(9600);
 
     // initialize SX1280 with default settings
