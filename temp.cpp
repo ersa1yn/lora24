@@ -1,9 +1,9 @@
 #include <iostream>
-#include "rangingCorrection/rangingCorrection_defines.h"
+#include "RadioLib_Ranging_Master/rangingCorrection.h"
 
 using namespace std;
 
-int main() {
+int main(int argc, char **argv) {
     
     // printf("const double rngCorrection[3][6] =\n{");
     // for (int k = 0; k < 3; k++) {
@@ -25,8 +25,10 @@ int main() {
     // }
     // printf("}");
 
+    // printf("%d %d", argv[1][0] - '0', argv[2][0] - '0');
+
     for (int i = 0; i < 160; i++) {
-        printf("%lf\n", rngCorrection[0][0][i]);
+        printf("%lf\n", RNG_LUT[argv[1][0] - '0'][argv[2][0] - '0'][i]);
     }
 
     return 0;

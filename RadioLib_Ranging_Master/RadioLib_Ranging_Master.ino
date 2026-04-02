@@ -1,34 +1,38 @@
 /*
 
-This example performs ranging exchange between two
-SX1280 LoRa radio modules. Ranging allows to measure
-distance between the modules using time-of-flight
-measurement.
+This example performs ranging exchange between two SX1280 LoRa radio modules.
+Ranging allows to measure distance between the modules using time-of-flight (ToF).
 
 Protocol:
-Master sends LoRa packet, Slave responds
-In capturing Slave's response, Master captures Frequency Error value
+Master sends LoRa packet recipe (BW, SF, Sample Size), Slave responds
+In captured Slave's LoRa packet response, Master records Frequency Error value
 
-Afterwards, Master does series of Ranging exchanges
+Afterwards, Master does series of Ranging exchanges,
+In each records rawRanging and rngRSSI values
+
+Online mode:
+On laptop receiver.py is running through WiFi Hotspot as server
+Master connects to WiFi Hotspot ("yers" Laptop) to send JSON file
+Server saves data into .csv file for further analysis
+
+Offline mode:
 In each exchange, calibration is computed:
 Fixed clock offset dependent on Master-Slave pair using FEI and gradient table
 LNA gain offset dependent on each exchange using RSSI value of Slave Ranging response and LUT
+Values are printed in the Arduino IDE Serial Monitor
 
-TODO : Rebuild Calibration table specific to LAMBDA80C-24D RF + ESP-32 DSP circuit and its antenna
-TODO : Introduce channel hopping for cross-technology interference, multipath problem
-TODO : Take some sort of Median value over period of exchange
 
+TODO : Rebuild Calibration table specific to LAMBDA80C-24D RF circuit and its antenna
 */
 
-
+#include <RadioLib.h>
 #define RADIOLIB_LOW_LEVEL (1)
 
-#include <RadioLib.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
 
-#include "rangingCorrection.h" 
+#include "../rangingCorrection/rangingCorrection.h"
 
 #define SAMPLE_SIZE static_cast<uint16_t>(100)
 #define DEVICE_ID static_cast<uint16_t>(0x0001)

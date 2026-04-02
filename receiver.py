@@ -10,9 +10,9 @@ DATA_ROOT = Path("data/runs")
 DATA_ROOT.mkdir(parents=True, exist_ok=True)
 
 BW_ID_TO_KHZ = {
-    0: 400,
-    1: 800,
-    2: 1600,
+    0: 406250,
+    1: 812500,
+    2: 1625000,
 }
 
 def utc_now_iso():
