@@ -1,6 +1,6 @@
 # lora24: LoRa Ranging and Trilateration Experimental Framework
 
-## Abstract
+5.04.2026
 
 This repository contains an experimental framework for short-range 2.4 GHz LoRa ranging and coordinated multi-anchor data collection. The codebase combines embedded firmware (ESP32 + SX1280 via RadioLib) with a lightweight server-side ingestion pipeline (Flask) to support controlled measurement campaigns across bandwidth and spreading-factor configurations.
 

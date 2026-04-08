@@ -1,6 +1,6 @@
 # Ranging Subsystem (Legacy Two-Node Workflow)
 
-## Abstract
+5.04.2026
 
 This module contains a direct master-slave ranging implementation for SX1280 radios at 2.4 GHz. It serves as a baseline acquisition and calibration workflow that predates the ring-coordinated trilateration branch. The subsystem is useful for controlled pairwise characterization, firmware bring-up, and calibration-table validation.
 

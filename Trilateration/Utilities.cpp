@@ -19,20 +19,39 @@ static inline void setLed(LinkContext& ctx, bool on) {
 LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expectedType,
     uint8_t expectedFrom, uint32_t timeoutMs, uint16_t retries) {
     
-    ctx.receivedFlag = false;
-    int st = ctx.radio.startReceive();
-    if (st != RADIOLIB_ERR_NONE) return LinkResult::RadioError;
+    uint8_t raw[PACKET_SZ];
 
+        digitalWrite(ctx.ledPin, on ? HIGH : LOW);
+
+    int st = ctx.radio.receive(raw, PACKET_SZ, timeoutMs);
+    if (st == RADIOLIB_ERR_RX_TIMEOUT) return LinkResult::Timeout;
+    else if (st != RADIOLIB_ERR_NONE)  return LinkResult::RadioError;
+    
+    setLed(ctx, false);
+    /* ctx.receivedFlag = false;
+    int st = ctx.radio.startReceive();
     setLed(ctx, true);
+    int st = ctx.radio.startReceive();
+    if (st != RADIOLIB_ERR_NONE) {
+        return LinkResult::RadioError;
+    }
+        delay(timeoutMs);
+    ctx.receivedFlag = false;
     while (!ctx.receivedFlag && retries > 0) {
         delay(timeoutMs);
         retries--;
     }
     setLed(ctx, false);
+        retries--;
+    if (!ctx.receivedFlag) {
+        return LinkResult::Timeout;
+    }
+    }
+    setLed(ctx, false);
 
     if (!ctx.receivedFlag) return LinkResult::Timeout;
+    */
 
-    uint8_t raw[PACKET_SZ];
     size_t len = ctx.radio.getPacketLength();
     if (len != PACKET_SZ) return LinkResult::WrongPacketLength;
 
@@ -41,6 +60,15 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
     if (st != RADIOLIB_ERR_NONE)         return LinkResult::RadioError;
 
     if (!unpackControlPacket(rx, raw))   return LinkResult::WrongContent;
+    
+    if (VERBOSE) {
+        char buffer[100];
+        sprintf(buffer, "type:%hhu; bwId:%hhu; sf:%hhu, sweep:%hhu, srcId:%hhu; dstId:%hhu",
+            static_cast<uint8_t>(rx.type), rx.bwId, rx.sf, rx.sweepCount, rx.srcId, rx.dstId);
+        Serial.println(F("Received packet! Contents:"));
+        Serial.println(buffer);
+    }
+
     if (rx.dstId != ctx.selfId)          return LinkResult::WrongDestination;
     if (expectedFrom > 0 &&
         rx.srcId != expectedFrom)        return LinkResult::WrongPeer;
@@ -89,6 +117,15 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx,
     if (st != RADIOLIB_ERR_NONE)         return LinkResult::RadioError;
 
     if (!unpackControlPacket(ack, ackRaw)) return LinkResult::WrongContent;
+   
+    if (VERBOSE) {
+        char buffer[100];
+        sprintf(buffer, "type:%hhu; bwId:%hhu; sf:%hhu, sweep:%hhu, srcId:%hhu; dstId:%hhu",
+            static_cast<uint8_t>(rx.type), rx.bwId, rx.sf, rx.sweepCount, rx.srcId, rx.dstId);
+        Serial.println(F("Received packet! Contents:"));
+        Serial.println(buffer);
+    }
+
     if (ack.dstId != ctx.selfId) return LinkResult::WrongDestination;
     if (ack.srcId != tx.dstId)   return LinkResult::WrongPeer;
     if (ack.type != tx.type)     return LinkResult::WrongType;

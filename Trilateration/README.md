@@ -1,6 +1,6 @@
 # Trilateration Subsystem
 
-## Abstract
+5.04.2026
 
 This module implements a coordinated multi-anchor measurement protocol for 2.4 GHz LoRa ranging using SX1280 radios. Rather than estimating coordinates directly on-device, the subsystem orchestrates synchronized data acquisition among three anchor masters and one slave. The resulting measurements are uploaded for offline trilateration and calibration analysis.
 

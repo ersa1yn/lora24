@@ -1,14 +1,19 @@
+#pragma once
+
+#include <Arduino.h>
+#include <RadioLib.h>
+
 #include <cstdint>
 
 // ======== CONFIG ========
 
-constexpr int     PACKET_SZ  = 4;
+constexpr int     PACKET_SZ = 4;
 constexpr int     TOTAL_CHNL = 40;
-constexpr float   DEFAULT_BW = 812.5;
+constexpr float   DEFAULT_BW = 812.5f;
 constexpr uint8_t DEFAULT_SF = 7;
-constexpr float   DEFAULT_RF = 2400.0;
+constexpr float   DEFAULT_RF = 2400.0f;
 constexpr int     DEFAULT_SZ = 256;
-constexpr uint8_t DEFAULT_SC = 3;      // sweep count
+constexpr uint8_t DEFAULT_SC = 3;  // sweep count
 
 extern const int BW[4];
 
@@ -17,12 +22,11 @@ extern const char WIFI_PASS[];
 // Laptop IP on WiFi hotspot:
 extern const char SERVER_URL[];
 
-// anc1 => anc2 => anc3 => anc1; id=0 for receiving all packets
-
+// anc1 => anc2 => anc3 => anc1; id=0 means "accept from any peer"
 extern const uint8_t ANCHOR_NUM;
 extern const uint8_t ANCHOR_IDS[];
 
-enum class PacketType : uint8_t {RangingRequest = 0, MasterDone = 1};
+enum class PacketType : uint8_t { RangingRequest = 0, MasterDone = 1 };
 
 struct ControlPacket {
     PacketType type;
@@ -33,11 +37,18 @@ struct ControlPacket {
     uint8_t dstId;
 };
 
-enum class Phase : uint8_t {WaitTurn, ConfigureSlave, Ranging, PassTurn, SendData};
+enum class Phase : uint8_t { WaitTurn, ConfigureSlave, Ranging, PassTurn, SendData };
 enum class LinkResult : uint8_t {
-    Ok, Timeout, CrcError, RadioError,
-    WrongPacketLength, WrongContent, WrongPeer, 
-    WrongDestination, WrongType, WrongSweepCount
+    Ok,
+    Timeout,
+    CrcError,
+    RadioError,
+    WrongPacketLength,
+    WrongContent,
+    WrongPeer,
+    WrongDestination,
+    WrongType,
+    WrongSweepCount
 };
 
 struct LinkContext {
@@ -46,6 +57,7 @@ struct LinkContext {
     uint8_t selfId;
     uint8_t ledPin;
     bool useLed;
+    bool verbose;
 };
 
 // ======== CONFIG END ========

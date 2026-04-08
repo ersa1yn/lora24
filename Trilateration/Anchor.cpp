@@ -45,30 +45,7 @@ sweepCount: number of ranging done, multiply by 40
 
 */
 
-const bool    MAIN_MASTER = true;
-const bool    VERBOSE = true;
-const uint8_t DEVICE_ID = 0x01; // master counted forwards
-const uint8_t TARGET_ID = 0xff; // slave counted backwards
-const char*   DEVICE_NAME = "feather-master-01"; // Unique per device
-
-#define RADIOLIB_LOW_LEVEL (1)
-#include <RadioLib.h>
-// check Notion for mapping
-SX1280 radio = new Module(33, 26, 27, 25); 
-
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <Preferences.h>
-
-#include <Utilities.h>
-
-#include <stdarg.h>
-#include <stdio.h>
-
-#include "../rangingCorrection.h"
-
-
-int state;
+#include "Anchor.h"
 
 Preferences prefs;
 uint32_t run_id;
@@ -81,7 +58,7 @@ uint16_t rngValid;
 uint16_t rngTimedOut;
 uint16_t rngFail;
 
-bool receivedFlag = false;
+volatile bool receivedFlag = false;
 void setFlag(void) { receivedFlag = true; }
 
 LinkContext linkCtx = { radio, receivedFlag, DEVICE_ID, LED_BUILTIN, true };
@@ -317,8 +294,7 @@ static bool appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...
 }
 
 bool buildRangingJsonBuffer( char* out, size_t cap, size_t* outLen, 
-    uint8_t bwId, uint8_t sf, uint8_t sweepCount
-) {
+    uint8_t bwId, uint8_t sf, uint8_t sweepCount) {
   if (!out || !outLen || cap == 0) return false;
 
   size_t pos = 0;
