@@ -67,6 +67,8 @@ SX1280 radio = new Module(33, 26, 27, 25);
 
 #include "../rangingCorrection.h"
 
+int state;
+
 Preferences prefs;
 uint32_t run_id;
 
@@ -78,7 +80,7 @@ uint16_t rngValid;
 uint16_t rngTimedOut;
 uint16_t rngFail;
 
-bool receivedFlag = false;
+volatile bool receivedFlag = false;
 void setFlag(void) {
   receivedFlag = true;
 }
@@ -395,7 +397,7 @@ void setup() {
 
   Serial.begin(9600);
 
-  connectWiFiIfNeeded();
+  // connectWiFiIfNeeded();
   // initialize SX1280 with default settings
   Serial.print(F("Initializing ... "));
   int state = radio.begin();

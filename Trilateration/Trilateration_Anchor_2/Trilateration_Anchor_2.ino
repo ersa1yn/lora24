@@ -130,7 +130,7 @@ void waitTurnPhase() {
             printLinkResult(temp);
         }
 
-        if (temp == LinkResult::Ok) break;
+        // if (temp == LinkResult::Ok) break;
     }
 
     // move to next configuration; 
@@ -392,7 +392,7 @@ void setup() {
 
     Serial.begin(9600);
 
-    connectWiFiIfNeeded();
+    // connectWiFiIfNeeded();
     // initialize SX1280 with default settings
     Serial.print(F("Initializing ... "));
     int state = radio.begin();

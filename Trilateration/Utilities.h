@@ -65,7 +65,7 @@ struct LinkContext {
 LinkResult sendAndAwaitAck(
     LinkContext& ctx,
     const ControlPacket& tx,
-    uint32_t timeoutMs = 500,
+    uint32_t timeoutMs = 5000,
     uint16_t retries = 10
 );
 
@@ -74,7 +74,7 @@ LinkResult awaitAndSendAck(
     ControlPacket& rx,
     PacketType expectedType,
     uint8_t expectedFrom = 0,
-    uint32_t timeoutMs = 500,
+    uint32_t timeoutMs = 5000,
     uint16_t retries = 10
 );
 

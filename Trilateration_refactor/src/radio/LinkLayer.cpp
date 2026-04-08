@@ -1,25 +1,7 @@
-#include <Arduino.h>
-#include <RadioLib.h>
-#include <algorithm>
-
-#include "Utilities.h"
-
-const int BW[4] = {406250, 812500, 1625000, 203125};
-const char WIFI_SSID[] = "yers";
-const char WIFI_PASS[] = "12345678";
-const char SERVER_URL[] = "http://10.42.0.1:5000/reading";
-
-constexpr uint8_t ANCHOR_NUM = 3;
-constexpr uint8_t ANCHOR_IDS[] = {0x01, 0x02, 0x03};
-
-int st;
-
-static inline void setLed(LinkContext& ctx, bool on) {
-    if (ctx.useLed) digitalWrite(ctx.ledPin, on ? HIGH : LOW);
-}
+#include "LinkLayer.h"
 
 LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expectedType,
-    uint8_t expectedFrom, uint32_t timeoutMs, uint16_t retries) {
+    uint8_t expectedFrom, uint32_t timeoutMs) {
 
     // ==================================
     // Await packet
@@ -103,7 +85,7 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
 }
 
 LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx, 
-    uint32_t timeoutMs, uint16_t retries) {
+    uint32_t timeoutMs) {
 
     // ==================================
     // Send Packet
@@ -180,18 +162,6 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx,
     return LinkResult::Ok;
 }
 
-int indexOf(uint8_t id) {
-    return std::find(ANCHOR_IDS, ANCHOR_IDS + ANCHOR_NUM, id) - ANCHOR_IDS;
-}
-
-uint8_t parentOf(uint8_t id) {
-    return ANCHOR_IDS[(indexOf(id) + ANCHOR_NUM - 1) % ANCHOR_NUM];
-}
-
-uint8_t childOf(uint8_t id) {
-    return ANCHOR_IDS[(indexOf(id) + 1) % ANCHOR_NUM];
-}
-
 void printLinkResult(LinkResult res) {
     switch (res) {
         case LinkResult::Ok:
@@ -228,29 +198,4 @@ void printLinkResult(LinkResult res) {
             Serial.println(F("Undocumented Link Result"));
             break;
     }
-}
-
-void packControlPacket(const ControlPacket& in, uint8_t* raw) {
-    raw[0] = ( static_cast<uint8_t>(in.type) << 6 ) |
-             ( in.bwId << 4 ) | ( in.sf );
-    raw[1] = in.sweepCount << 4;
-    raw[2] = in.srcId;
-    raw[3] = in.dstId;
-}
-
-bool unpackControlPacket(ControlPacket& out, const uint8_t* raw) {
-    out.type  = static_cast<PacketType>(raw[0] >> 6);
-    out.bwId  = (raw[0] >> 4) & 0x3;
-    out.sf    = raw[0] & 0xF;
-    out.srcId = raw[2];
-    out.dstId = raw[3];
-    out.sweepCount = raw[1] >> 4;
-
-    if (static_cast<uint8_t>(out.type) == 2 ||
-        static_cast<uint8_t>(out.type) == 3 ||
-        out.bwId == 3 || 
-        out.sf < 5 || out.sf > 10) 
-        return false;
-
-    return true;
 }
