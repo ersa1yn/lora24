@@ -18,12 +18,15 @@ static inline void setLed(LinkContext& ctx, bool on) {
 
 LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expectedType,
     uint8_t expectedFrom, uint32_t timeoutMs, uint16_t retries) {
-    
+
+    // ==================================
+    // Await packet
+    // ==================================
     uint8_t raw[PACKET_SZ];
 
-        digitalWrite(ctx.ledPin, on ? HIGH : LOW);
+    setLed(ctx, true);
 
-    int st = ctx.radio.receive(raw, PACKET_SZ, timeoutMs);
+    int st = ctx.radio.receive(raw, PACKET_SZ, timeoutMs * retries);
     if (st == RADIOLIB_ERR_RX_TIMEOUT) return LinkResult::Timeout;
     else if (st != RADIOLIB_ERR_NONE)  return LinkResult::RadioError;
     
@@ -52,6 +55,10 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
     if (!ctx.receivedFlag) return LinkResult::Timeout;
     */
 
+    // ==================================
+    // Check received packet
+    // ==================================
+
     size_t len = ctx.radio.getPacketLength();
     if (len != PACKET_SZ) return LinkResult::WrongPacketLength;
 
@@ -61,6 +68,10 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
 
     if (!unpackControlPacket(rx, raw))   return LinkResult::WrongContent;
     
+    // ==================================
+    // Print packet contents
+    // ==================================
+
     if (VERBOSE) {
         char buffer[100];
         sprintf(buffer, "type:%hhu; bwId:%hhu; sf:%hhu, sweep:%hhu, srcId:%hhu; dstId:%hhu",
@@ -75,6 +86,10 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
     if (rx.type != expectedType)         return LinkResult::WrongType;
     if (rx.sweepCount > 6)               return LinkResult::WrongSweepCount;
 
+    // ==================================
+    // Send ACK if it is expected type
+    // ==================================
+
     ControlPacket ack = {expectedType, rx.bwId, rx.sf, rx.sweepCount, ctx.selfId, rx.srcId};
     uint8_t ackRaw[PACKET_SZ];
     packControlPacket(ack, ackRaw);
@@ -86,6 +101,10 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
 
 LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx, 
     uint32_t timeoutMs, uint16_t retries) {
+
+    // ==================================
+    // Send Packet
+    // ==================================
     uint8_t txRaw[PACKET_SZ];
     packControlPacket(tx, txRaw);
 
@@ -94,6 +113,21 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx,
 
     delay(1);
 
+    // ==================================
+    // Await Acknowledgement
+    // ==================================
+
+    uint8_t raw[PACKET_SZ];
+
+    setLed(ctx, true);
+
+    int st = ctx.radio.receive(raw, PACKET_SZ, timeoutMs * retries);
+    if (st == RADIOLIB_ERR_RX_TIMEOUT) return LinkResult::Timeout;
+    else if (st != RADIOLIB_ERR_NONE)  return LinkResult::RadioError;
+    
+    setLed(ctx, false);
+
+/*
     ctx.receivedFlag = false;
     st = ctx.radio.startReceive();
     if (st != RADIOLIB_ERR_NONE) return LinkResult::RadioError;
@@ -106,6 +140,11 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx,
     setLed(ctx, false);
 
     if (!ctx.receivedFlag) return LinkResult::Timeout;
+*/
+
+    // ==================================
+    // Check received packet
+    // ==================================
 
     ControlPacket ack;    
     uint8_t ackRaw[PACKET_SZ];
@@ -118,6 +157,9 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx,
 
     if (!unpackControlPacket(ack, ackRaw)) return LinkResult::WrongContent;
    
+    // ==================================
+    // Print packet contents
+    // ==================================
     if (VERBOSE) {
         char buffer[100];
         sprintf(buffer, "type:%hhu; bwId:%hhu; sf:%hhu, sweep:%hhu, srcId:%hhu; dstId:%hhu",

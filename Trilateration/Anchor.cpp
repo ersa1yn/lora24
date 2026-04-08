@@ -45,7 +45,37 @@ sweepCount: number of ranging done, multiply by 40
 
 */
 
+#include <Arduino.h>
+
 #include "Anchor.h"
+
+#define RADIOLIB_LOW_LEVEL (1)
+#include <RadioLib.h>
+
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Preferences.h>
+
+#include "Utilities.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+
+#include "rangingCorrection.h"
+
+namespace {
+
+constexpr AnchorConfig kDefaultConfig = {
+    true,
+    true,
+    0x01,
+    0xff,
+    "feather-master-01"
+};
+
+SX1280 radio = new Module(33, 26, 27, 25);
+
+int state;
 
 Preferences prefs;
 uint32_t run_id;
@@ -61,7 +91,10 @@ uint16_t rngFail;
 volatile bool receivedFlag = false;
 void setFlag(void) { receivedFlag = true; }
 
-LinkContext linkCtx = { radio, receivedFlag, DEVICE_ID, LED_BUILTIN, true };
+AnchorConfig activeConfig = kDefaultConfig;
+bool mainMasterStarted = false;
+
+LinkContext linkCtx = { radio, receivedFlag, activeConfig.deviceId, LED_BUILTIN, true, activeConfig.verbose };
 
 void initRunId() {
     // namespace "ranging", read-write (false = RW)
@@ -91,7 +124,14 @@ void advanceRunId() {
     Serial.println(run_id);
 }
 
+void refreshLinkContext() {
+    linkCtx.selfId = activeConfig.deviceId;
+    linkCtx.verbose = activeConfig.verbose;
+}
+
 void waitTurnPhase() {
+    refreshLinkContext();
+
     radio.setBandwidth(DEFAULT_BW);
     radio.setSpreadingFactor(DEFAULT_SF);
     radio.setFrequency(DEFAULT_RF);
@@ -99,10 +139,10 @@ void waitTurnPhase() {
     ControlPacket rx;
 
     while (true) {
-        LinkResult temp = awaitAndSendAck(linkCtx, rx, PacketType::MasterDone, parentOf(DEVICE_ID));
+        LinkResult temp = awaitAndSendAck(linkCtx, rx, PacketType::MasterDone, parentOf(activeConfig.deviceId));
         
         // Only main-master is connected to laptop, i.e. Arduino IDE's Serial Output
-        if (VERBOSE) {    
+        if (activeConfig.verbose) {
             Serial.print(F("Wait Turn: "));
             printLinkResult(temp);
         }
@@ -112,7 +152,7 @@ void waitTurnPhase() {
 
     // move to next configuration; 
     // experiment only - will be changed for production
-    if (MAIN_MASTER) {
+    if (activeConfig.mainMaster) {
         if (rx.sf == 10) {
             if (rx.bwId == 2) {
                 rx.bwId = 0; 
@@ -127,21 +167,23 @@ void waitTurnPhase() {
 }
 
 void configureSlavePhase(ControlPacket rx) {
+    refreshLinkContext();
+
     radio.setBandwidth(DEFAULT_BW);
     radio.setSpreadingFactor(DEFAULT_SF);
     radio.setFrequency(DEFAULT_RF);
 
     ControlPacket tx = rx;
     tx.type = PacketType::RangingRequest;
-    tx.srcId = DEVICE_ID;
+    tx.srcId = activeConfig.deviceId;
     // experiment only - in production target should be flexible
-    tx.dstId = TARGET_ID;
+    tx.dstId = activeConfig.targetId;
 
     while (true) {
         LinkResult temp = sendAndAwaitAck(linkCtx, tx);
         
         // Only main-master is connected to laptop, i.e. Arduino IDE's Serial Output
-        if (VERBOSE) {
+        if (activeConfig.verbose) {
             Serial.print(F("Configure Slave: "));
             printLinkResult(temp);   
         }
@@ -151,7 +193,7 @@ void configureSlavePhase(ControlPacket rx) {
 
     freqError = radio.getFrequencyError();
     
-    if (MAIN_MASTER) {
+    if (activeConfig.verbose) {
         Serial.println(F("Received Slave's Acknowledgment"));
 
         Serial.print(F("RSSI:\t\t"));
@@ -189,7 +231,7 @@ void rangingPhase(ControlPacket rx) {
         rngRSSI[i] = 0;
     }
     
-    if (VERBOSE) {
+    if (activeConfig.verbose) {
         Serial.println(F("Ranging ... "));
     }
 
@@ -202,7 +244,7 @@ void rangingPhase(ControlPacket rx) {
             radio.setFrequency(CHANNELS[chnCounter++]);
 
             digitalWrite(LED_BUILTIN, HIGH);
-            state = radio.range(true, TARGET_ID/*, RNG_CALIB*/);
+            state = radio.range(true, activeConfig.targetId/*, RNG_CALIB*/);
             digitalWrite(LED_BUILTIN, LOW);
 
             if (state == RADIOLIB_ERR_NONE) {            
@@ -216,14 +258,14 @@ void rangingPhase(ControlPacket rx) {
                 rngFail++;
             }
 
-            if (VERBOSE) {
+            if (activeConfig.verbose) {
                 Serial.print(" ");
                 Serial.print(chnCounter);
             }
         }
     }
 
-    if (VERBOSE) {
+    if (activeConfig.verbose) {
         Serial.print(F("Ranging Done! BandWidth: "));
         Serial.print(BW[rx.bwId]);
         Serial.print(F(" ; SF: "));
@@ -241,20 +283,22 @@ void rangingPhase(ControlPacket rx) {
 }
 
 void passTurnPhase(ControlPacket rx) {
+    refreshLinkContext();
+
     radio.setBandwidth(DEFAULT_BW);
     radio.setSpreadingFactor(DEFAULT_SF);
     radio.setFrequency(DEFAULT_RF);    
     
     ControlPacket tx = rx;
     tx.type = PacketType::MasterDone;
-    tx.srcId = DEVICE_ID;
-    tx.dstId = childOf(DEVICE_ID);
+    tx.srcId = activeConfig.deviceId;
+    tx.dstId = childOf(activeConfig.deviceId);
 
     while (true) {
         LinkResult temp = sendAndAwaitAck(linkCtx, tx);
         
         // Only main-master is connected to laptop, i.e. Arduino IDE's Serial Output
-        if (VERBOSE) {
+        if (activeConfig.verbose) {
             Serial.print(F("Pass Turn: "));
             printLinkResult(temp);
         }
@@ -274,62 +318,62 @@ void connectWiFiIfNeeded() {
     }
 }
 
-static bool appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...) {
-  if (!out || !pos || *pos >= cap) return false;
+bool appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...) {
+    if (!out || !pos || *pos >= cap) return false;
 
-  va_list args;
-  va_start(args, fmt);
-  int n = vsnprintf(out + *pos, cap - *pos, fmt, args);
-  va_end(args);
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(out + *pos, cap - *pos, fmt, args);
+    va_end(args);
 
-  if (n < 0) return false;
-  size_t written = (size_t)n;
-  if (written >= (cap - *pos)) {
-    *pos = cap;
-    return false;
-  }
+    if (n < 0) return false;
+    size_t written = (size_t)n;
+    if (written >= (cap - *pos)) {
+        *pos = cap;
+        return false;
+    }
 
-  *pos += written;
-  return true;
+    *pos += written;
+    return true;
 }
 
-bool buildRangingJsonBuffer( char* out, size_t cap, size_t* outLen, 
-    uint8_t bwId, uint8_t sf, uint8_t sweepCount) {
-  if (!out || !outLen || cap == 0) return false;
+bool buildRangingJsonBuffer( char* out, size_t cap, size_t* outLen,
+        uint8_t bwId, uint8_t sf, uint8_t sweepCount) {
+    if (!out || !outLen || cap == 0) return false;
 
-  size_t pos = 0;
-  uint8_t bwSf = (uint8_t)(((bwId & 0x0F) << 4) | (sf & 0x0F));
+    size_t pos = 0;
+    uint8_t bwSf = (uint8_t)(((bwId & 0x0F) << 4) | (sf & 0x0F));
 
-  if (!appendJsonf(out, cap, &pos,
-    "{\"run_id\":%lu,\"device_id\":%u,\"target_id\":%u,"
-    "\"bw_sf\":%u,\"freqError\":%.6f,\"sweepCount\":%u,"
-    "\"valid\":%u,\"timeout\":%u,\"fail\":%u,\"raw_rng\":[",
-    (unsigned long)run_id,
-    (unsigned)DEVICE_ID,
-    (unsigned)TARGET_ID,
-    (unsigned)bwSf,
-    (double)freqError,
-    (unsigned)sweepCount,
-    (unsigned)rngValid,
-    (unsigned)rngTimedOut,
-    (unsigned)rngFail)) return false;
+    if (!appendJsonf(out, cap, &pos,
+        "{\"run_id\":%lu,\"device_id\":%u,\"target_id\":%u,"
+        "\"bw_sf\":%u,\"freqError\":%.6f,\"sweepCount\":%u,"
+        "\"valid\":%u,\"timeout\":%u,\"fail\":%u,\"raw_rng\":[",
+        (unsigned long)run_id,
+        (unsigned)activeConfig.deviceId,
+        (unsigned)activeConfig.targetId,
+        (unsigned)bwSf,
+        (double)freqError,
+        (unsigned)sweepCount,
+        (unsigned)rngValid,
+        (unsigned)rngTimedOut,
+        (unsigned)rngFail)) return false;
 
-  for (uint16_t i = 0; i < rngValid; i++) {
-    if (!appendJsonf(out, cap, &pos, "%s%lu",
-      (i ? "," : ""), (unsigned long)rawRng[i])) return false;
-  }
+    for (uint16_t i = 0; i < rngValid; i++) {
+        if (!appendJsonf(out, cap, &pos, "%s%lu",
+        (i ? "," : ""), (unsigned long)rawRng[i])) return false;
+    }
 
-  if (!appendJsonf(out, cap, &pos, "],\"rng_rssi\":[")) return false;
+    if (!appendJsonf(out, cap, &pos, "],\"rng_rssi\":[")) return false;
 
-  for (uint16_t i = 0; i < rngValid; i++) {
-    if (!appendJsonf(out, cap, &pos, "%s%u",
-      (i ? "," : ""), (unsigned)rngRSSI[i])) return false;
-  }
+    for (uint16_t i = 0; i < rngValid; i++) {
+        if (!appendJsonf(out, cap, &pos, "%s%u",
+        (i ? "," : ""), (unsigned)rngRSSI[i])) return false;
+    }
 
-  if (!appendJsonf(out, cap, &pos, "]}")) return false;
+    if (!appendJsonf(out, cap, &pos, "]}")) return false;
 
-  *outLen = pos;
-  return true;
+    *outLen = pos;
+    return true;
 }
 
 bool dataSendPhase(ControlPacket rx) {
@@ -363,7 +407,24 @@ bool dataSendPhase(ControlPacket rx) {
     }
 }
 
-void setup() {
+} // namespace
+
+AnchorConfig makeDefaultAnchorConfig() {
+    return kDefaultConfig;
+}
+
+void anchorSetConfig(const AnchorConfig& config) {
+    activeConfig = config;
+    refreshLinkContext();
+}
+
+const AnchorConfig& anchorGetConfig() {
+    return activeConfig;
+}
+
+void anchorSetup() {
+    refreshLinkContext();
+
     pinMode(LED_BUILTIN, OUTPUT);
 
     Serial.begin(9600);
@@ -371,13 +432,13 @@ void setup() {
     connectWiFiIfNeeded();
     // initialize SX1280 with default settings
     Serial.print(F("Initializing ... "));
-    int state = radio.begin();
+    int beginState = radio.begin();
 
-    if (state == RADIOLIB_ERR_NONE) {
+    if (beginState == RADIOLIB_ERR_NONE) {
         Serial.println(F("success!"));
     } else {
         Serial.print(F("failed, code "));
-        Serial.println(state);
+        Serial.println(beginState);
         while (true) { delay(10); }
     }
     
@@ -390,9 +451,10 @@ void setup() {
 
 bool main_master_start = false;
 
-void loop() {
-    if (MAIN_MASTER && !main_master_start) {
-        ControlPacket rx = {PacketType::RangingRequest, 0, 5, 3, DEVICE_ID, TARGET_ID};
+void anchorLoop() {
+    if (activeConfig.mainMaster && !mainMasterStarted) {
+        ControlPacket rx = {PacketType::RangingRequest, 0, 5, DEFAULT_SC, 
+            activeConfig.deviceId, activeConfig.targetId};
         configureSlavePhase(rx);
         main_master_start = true;
     }
