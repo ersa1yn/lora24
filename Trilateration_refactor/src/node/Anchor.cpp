@@ -11,7 +11,7 @@
 Anchor::Anchor(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin)
     : NodeBase(radio, cfg, ledPin, true) {}
 
-void connectWiFiIfNeeded() {
+void Anchor::connectWiFiIfNeeded() {
     if (WiFi.status() == WL_CONNECTED) return;
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -193,7 +193,7 @@ void Anchor::passTurnPhase(ControlPacket rx) {
     while (!dataSendPhase(rx)) {}
 }
 
-static bool appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...) {
+bool Anchor::appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...) {
     if (!out || !pos || *pos >= cap) return false;
 
     va_list args;
