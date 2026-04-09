@@ -10,16 +10,19 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
     // ==================================
     // Await packet
     // ==================================
-    uint8_t raw[PACKET_SZ];
+    uint8_t rxRaw[PACKET_SZ];
 
     setLed(ctx, true);
 
     unsigned long timeout = timeoutMs * 1000;
-    int state = ctx.radio.receive(raw, PACKET_SZ, timeout);
-    if (state == RADIOLIB_ERR_RX_TIMEOUT) return LinkResult::Timeout;
-    else if (state != RADIOLIB_ERR_NONE)  return LinkResult::RadioError;
-    
+    int state = ctx.radio.receive(rxRaw, PACKET_SZ, timeout);
+
     setLed(ctx, false);
+    
+    if (state == RADIOLIB_ERR_RX_TIMEOUT) return LinkResult::Timeout;
+    if (state == RADIOLIB_ERR_CRC_MISMATCH) return LinkResult::CrcError;
+    if (state != RADIOLIB_ERR_NONE)  return LinkResult::RadioError;
+    
     /* ctx.receivedFlag = false;
     int state = ctx.radio.startReceive();
     setLed(ctx, true);
@@ -51,11 +54,7 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
     size_t len = ctx.radio.getPacketLength();
     if (len != PACKET_SZ) return LinkResult::WrongPacketLength;
 
-    state = ctx.radio.readData(raw, len);
-    if (state == RADIOLIB_ERR_CRC_MISMATCH) return LinkResult::CrcError;
-    if (state != RADIOLIB_ERR_NONE)         return LinkResult::RadioError;
-
-    if (!unpackControlPacket(rx, raw))   return LinkResult::WrongContent;
+    if (!unpackControlPacket(rx, rxRaw))   return LinkResult::WrongContent;
     
     // ==================================
     // Print packet contents
@@ -64,7 +63,8 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
     if (ctx.verbose) {
         char buffer[100];
         sprintf(buffer, "type:%hhu; bwId:%hhu; sf:%hhu, sweep:%hhu, srcId:%hhu; dstId:%hhu",
-            static_cast<uint8_t>(rx.type), rx.bwId, rx.sf, rx.sweepCount, rx.srcId, rx.dstId);
+            static_cast<uint8_t>(rx.type), rx.bwId, rx.sf, 
+            rx.sweepCount, rx.srcId, rx.dstId);
         Serial.println(F("Received packet! Contents:"));
         Serial.println(buffer);
     }
@@ -104,29 +104,25 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx, uint32_t t
     // Await Acknowledgement
     // ==================================
 
-    uint8_t raw[PACKET_SZ];
+    uint8_t ackRaw[PACKET_SZ];
 
     setLed(ctx, true);
 
     RadioLibTime_t timeout = timeoutMs * 1000;
-    state = ctx.radio.receive(raw, PACKET_SZ, timeout);
-    if (state == RADIOLIB_ERR_RX_TIMEOUT) return LinkResult::Timeout;
-    else if (state != RADIOLIB_ERR_NONE)  return LinkResult::RadioError;
-    
+    state = ctx.radio.receive(ackRaw, PACKET_SZ, timeout);
     setLed(ctx, false);
+
+    if (state == RADIOLIB_ERR_RX_TIMEOUT) return LinkResult::Timeout;
+    if (state == RADIOLIB_ERR_CRC_MISMATCH) return LinkResult::CrcError;
+    if (state != RADIOLIB_ERR_NONE)  return LinkResult::RadioError;
 
     // ==================================
     // Check received packet
     // ==================================
 
     ControlPacket ack;    
-    uint8_t ackRaw[PACKET_SZ];
     size_t len = ctx.radio.getPacketLength();
     if (len != PACKET_SZ) return LinkResult::WrongPacketLength;
-
-    state = ctx.radio.readData(ackRaw, len);
-    if (state == RADIOLIB_ERR_CRC_MISMATCH) return LinkResult::CrcError;
-    if (state != RADIOLIB_ERR_NONE)         return LinkResult::RadioError;
 
     if (!unpackControlPacket(ack, ackRaw)) return LinkResult::WrongContent;
    
@@ -137,7 +133,8 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx, uint32_t t
     if (ctx.verbose) {
         char buffer[100];
         sprintf(buffer, "type:%hhu; bwId:%hhu; sf:%hhu, sweep:%hhu, srcId:%hhu; dstId:%hhu",
-            static_cast<uint8_t>(tx.type), tx.bwId, tx.sf, tx.sweepCount, tx.srcId, tx.dstId);
+            static_cast<uint8_t>(ack.type), ack.bwId, ack.sf, 
+            ack.sweepCount, ack.srcId, ack.dstId);
         Serial.println(F("Received packet! Contents:"));
         Serial.println(buffer);
     }

@@ -1,3 +1,4 @@
+#pragma once
 #include <cstdint>
 
 #define NUMBER_OF_FACTORS_PER_SFBW 160

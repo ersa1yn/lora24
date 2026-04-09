@@ -1,12 +1,13 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
+#define RADIOLIB_LOW_LEVEL (1)
+
 #include "Anchor.h"
 #include "../config/ProjectConfig.h"
 #include "../config/Topology.h"
 #include "../calibration/calibration.h"
 
-#define RADIOLIB_LOW_LEVEL (1)
 
 Anchor::Anchor(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin)
     : NodeBase(radio, cfg, ledPin, true) {}
@@ -162,17 +163,12 @@ void Anchor::rangingPhase(ControlPacket rx) {
     }
 
     if (cfg_.verbose) {
-        Serial.print(F("Ranging Done! BandWidth: "));
-        Serial.print(BW[rx.bwId]);
-        Serial.print(F(" ; SF: "));
-        Serial.print(rx.sf);
+        Serial.print(F("Ranging Done! BandWidth: ")); Serial.print(BW[rx.bwId]);
+        Serial.print(F(" ; SF: ")); Serial.print(rx.sf);
         Serial.println(F(" ;\nPackets stats:"));
-        Serial.print(F("Valid:\t"));
-        Serial.println(rngValid_);
-        Serial.print(F("TimedOut:\t"));
-        Serial.println(rngTimeout_);
-        Serial.print(F("Failed:\t"));
-        Serial.println(rngFail_);
+        Serial.print(F("Valid:\t"));    Serial.println(rngValid_);
+        Serial.print(F("TimedOut:\t")); Serial.println(rngTimeout_);
+        Serial.print(F("Failed:\t"));   Serial.println(rngFail_);
     }
 
     passTurnPhase(rx);

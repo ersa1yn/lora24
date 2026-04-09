@@ -30,7 +30,7 @@ private:
     void passTurnPhase(ControlPacket rx);
     bool dataSendPhase(ControlPacket rx);
     void connectWiFiIfNeeded();
-    static bool appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...);
+    bool appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...);
     bool buildRangingJsonBuffer(char* out, size_t cap, 
         size_t* outLen, uint8_t bwId, uint8_t sf, uint8_t sweepCount);
 };

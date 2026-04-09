@@ -2,9 +2,9 @@
 #include "NodeBase.h"
 #include "../protocol/ControlProtocol.h"
 
-class TargetNode : public NodeBase {
+class Target : public NodeBase {
 public:
-  TargetNode(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin = LED_BUILTIN);
+  Target(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin = LED_BUILTIN);
 
   void begin() override;
   void loop() override;

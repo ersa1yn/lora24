@@ -1,6 +1,6 @@
 #include <RadioLib.h>
-#include "src/node/Anchor.h"
-#include "src/node/NodeConfig.h"
+#include "node/Anchor.h"
+#include "node/NodeConfig.h"
 
 const bool    MAIN_MASTER = false;
 const bool    VERBOSE = true;

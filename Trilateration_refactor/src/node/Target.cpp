@@ -2,10 +2,10 @@
 #include "../config/ProjectConfig.h"
 #include "../calibration/calibration.h"
 
-TargetNode::TargetNode(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin)
+Target::Target(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin)
   : NodeBase(radio, cfg, ledPin, true) {}
 
-void TargetNode::begin() {
+void Target::begin() {
     pinMode(ledPin_, OUTPUT);
     Serial.begin(9600);
 
@@ -17,11 +17,11 @@ void TargetNode::begin() {
     Serial.println(F("success!"));
 }
 
-void TargetNode::loop() {
+void Target::loop() {
     getConfigurationPhase();
 }
 
-void TargetNode::getConfigurationPhase() {
+void Target::getConfigurationPhase() {
     radio_.setBandwidth(DEFAULT_BW);
     radio_.setSpreadingFactor(DEFAULT_SF);
     radio_.setFrequency(DEFAULT_RF);
@@ -53,7 +53,7 @@ void TargetNode::getConfigurationPhase() {
     rangingPhase(rx);
 }
 
-void TargetNode::rangingPhase(ControlPacket rx) {
+void Target::rangingPhase(ControlPacket rx) {
     rngValid_ = rngTimeout_ = rngFail_ = 0;
 
     if (cfg_.verbose) Serial.println(F("Ranging ... "));

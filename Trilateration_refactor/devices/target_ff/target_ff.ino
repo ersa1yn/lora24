@@ -1,6 +1,6 @@
 #include <RadioLib.h>
-#include "src/node/Target.h"
-#include "src/node/NodeConfig.h"
+#include "node/Target.h"
+#include "node/NodeConfig.h"
 
 const bool    VERBOSE = true;
 const uint8_t DEVICE_ID = 0xff;
