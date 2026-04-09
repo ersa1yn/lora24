@@ -19,7 +19,7 @@ NodeConfig cfg{
   .deviceName = DEVICE_NAME
 };
 
-Target node(radio, cfg);
+Anchor node(radio, cfg);
 
 void setup() { node.begin(); }
 void loop() { node.loop(); }

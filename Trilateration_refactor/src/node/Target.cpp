@@ -1,6 +1,6 @@
-#include "TargetNode.h"
+#include "Target.h"
 #include "../config/ProjectConfig.h"
-#include "../rangingCorrection.h"
+#include "../calibration/calibration.h"
 
 TargetNode::TargetNode(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin)
   : NodeBase(radio, cfg, ledPin, true) {}

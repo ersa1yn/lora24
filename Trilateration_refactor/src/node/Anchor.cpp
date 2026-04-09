@@ -1,6 +1,12 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+
 #include "Anchor.h"
 #include "../config/ProjectConfig.h"
 #include "../config/Topology.h"
+#include "../calibration/calibration.h"
+
+#define RADIOLIB_LOW_LEVEL (1)
 
 Anchor::Anchor(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin)
     : NodeBase(radio, cfg, ledPin, true) {}
@@ -32,9 +38,9 @@ void Anchor::begin() {
 
 void Anchor::loop() {
     if (cfg_.mainMaster && !started_) {
-        ControlPacket startPkt{PacketType::MasterDone, 0, 5, PACKET_SZ, 
+        ControlPacket startPkt{PacketType::MasterDone, 0, 5, DEFAULT_SC, 
             Topology::parentOf(cfg_.deviceId), cfg_.deviceId};
-        passTurnPhase(startPkt);
+        configureSlavePhase(startPkt);
         started_ = true;
     }
 
@@ -101,41 +107,51 @@ void Anchor::configureSlavePhase(ControlPacket rx) {
     rangingPhase(rx);
 }
 
+uint8_t Anchor::rangingRssi() {
+    uint8_t data[1] = { 0 };
+    int state = radio_.readRegister(RADIOLIB_SX128X_REG_RANGING_RSSI, data, 1);  // 0x0964
+
+    if (state != RADIOLIB_ERR_NONE) 
+        Serial.println(F("Could not read rngRssi from the register"));
+
+    return data[0];
+}
+
 void Anchor::rangingPhase(ControlPacket rx) {
     rngValid_ = 0;
     rngTimeout_ = 0;
     rngFail_ = 0;
 
     for (int i = 0; i < rx.sweepCount * TOTAL_CHNL; i++) {
-        rawRng[i] = 0;
-        rngRSSI[i] = 0;
+        rawRng_[i] = 0;
+        rngRssi_[i] = 0;
     }
 
     if (cfg_.verbose) {
         Serial.println(F("Ranging ... "));
     }
 
-    radio.setBandwidth(BW[rx.bwId] / 1000.0f);
-    radio.setSpreadingFactor(rx.sf);
+    radio_.setBandwidth(BW[rx.bwId] / 1000.0f);
+    radio_.setSpreadingFactor(rx.sf);
 
     for (int i = 0; i < rx.sweepCount; i++) {
         int chnCounter = 0;
         while (chnCounter < TOTAL_CHNL) {
-            radio.setFrequency(CHANNELS[chnCounter++]);
+            radio_.setFrequency(CHANNELS[chnCounter++]);
 
             digitalWrite(LED_BUILTIN, HIGH);
-            state = radio.range(true, TARGET_ID /*, RNG_CALIB*/);
+            int state = radio_.range(true, cfg_.targetId /*, RNG_CALIB*/);
             digitalWrite(LED_BUILTIN, LOW);
 
             if (state == RADIOLIB_ERR_NONE) {
-                rawRng[rngValid] = radio.getRangingResultRaw();
-                rngRSSI[rngValid] = rangingRSSI();
+                rawRng_[rngValid_] = radio_.getRangingResultRaw();
+                rngRssi_[rngValid_] = rangingRssi();
 
-                rngValid++;
+                rngValid_++;
             } else if (state == RADIOLIB_ERR_RANGING_TIMEOUT) {
-                rngTimedOut++;
+                rngTimeout_++;
             } else {
-                rngFail++;
+                rngFail_++;
             }
 
             if (cfg_.verbose) {
@@ -152,11 +168,11 @@ void Anchor::rangingPhase(ControlPacket rx) {
         Serial.print(rx.sf);
         Serial.println(F(" ;\nPackets stats:"));
         Serial.print(F("Valid:\t"));
-        Serial.println(rngValid);
+        Serial.println(rngValid_);
         Serial.print(F("TimedOut:\t"));
-        Serial.println(rngTimedOut);
+        Serial.println(rngTimeout_);
         Serial.print(F("Failed:\t"));
-        Serial.println(rngFail);
+        Serial.println(rngFail_);
     }
 
     passTurnPhase(rx);
@@ -196,8 +212,8 @@ static bool appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...
     return true;
 }
 
-bool buildRangingJsonBuffer(char* out, size_t cap, size_t* outLen,
-                            uint8_t bwId, uint8_t sf, uint8_t sweepCount) {
+bool Anchor::buildRangingJsonBuffer(char* out, size_t cap, 
+    size_t* outLen, uint8_t bwId, uint8_t sf, uint8_t sweepCount) {
     if (!out || !outLen || cap == 0) return false;
 
     size_t pos = 0;
@@ -207,26 +223,26 @@ bool buildRangingJsonBuffer(char* out, size_t cap, size_t* outLen,
                     "{\"run_id\":%lu,\"device_id\":%u,\"target_id\":%u,"
                     "\"bw_sf\":%u,\"freqError\":%.6f,\"sweepCount\":%u,"
                     "\"valid\":%u,\"timeout\":%u,\"fail\":%u,\"raw_rng\":[",
-                    (unsigned long)run_id,
-                    (unsigned)DEVICE_ID,
-                    (unsigned)TARGET_ID,
+                    (unsigned long) runId_,
+                    (unsigned)cfg_.deviceId,
+                    (unsigned)cfg_.targetId,
                     (unsigned)bwSf,
-                    (double)freqError,
+                    (double)freqError_,
                     (unsigned)sweepCount,
-                    (unsigned)rngValid,
-                    (unsigned)rngTimedOut,
-                    (unsigned)rngFail)) return false;
+                    (unsigned)rngValid_,
+                    (unsigned)rngTimeout_,
+                    (unsigned)rngFail_)) return false;
 
-    for (uint16_t i = 0; i < rngValid; i++) {
+    for (uint16_t i = 0; i < rngValid_; i++) {
         if (!appendJsonf(out, cap, &pos, "%s%lu",
-                        (i ? "," : ""), (unsigned long)rawRng[i])) return false;
+                        (i ? "," : ""), (unsigned long)rawRng_[i])) return false;
     }
 
     if (!appendJsonf(out, cap, &pos, "],\"rng_rssi\":[")) return false;
 
-    for (uint16_t i = 0; i < rngValid; i++) {
+    for (uint16_t i = 0; i < rngValid_; i++) {
         if (!appendJsonf(out, cap, &pos, "%s%u",
-                        (i ? "," : ""), (unsigned)rngRSSI[i])) return false;
+                        (i ? "," : ""), (unsigned)rngRssi_[i])) return false;
     }
 
     if (!appendJsonf(out, cap, &pos, "]}")) return false;

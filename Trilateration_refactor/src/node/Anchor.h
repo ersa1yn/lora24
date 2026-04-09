@@ -25,7 +25,10 @@ private:
 
     void waitTurnPhase();
     void configureSlavePhase(ControlPacket rx);
+    uint8_t rangingRssi();
     void rangingPhase(ControlPacket rx);
     void passTurnPhase(ControlPacket rx);
     bool dataSendPhase(ControlPacket rx);
+    bool buildRangingJsonBuffer(char* out, size_t cap, 
+        size_t* outLen, uint8_t bwId, uint8_t sf, uint8_t sweepCount);
 };

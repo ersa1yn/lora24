@@ -13,7 +13,7 @@ NodeConfig cfg{
   .mainMaster = false,
   .verbose = VERBOSE,
   .deviceId = DEVICE_ID,
-  .peerId = 0x00,
+  .targetId = 0x00,
   .deviceName = DEVICE_NAME
 };
 
