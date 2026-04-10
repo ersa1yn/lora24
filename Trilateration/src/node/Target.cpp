@@ -29,17 +29,13 @@ void Target::getConfigurationPhase() {
     ControlPacket rx{};
     while (true) {
         LinkResult r = awaitAndSendAck(link_, rx, PacketType::RangingRequest);
-        if (cfg_.verbose) {
-            Serial.print(F("Get Configuration: "));
-            printLinkResult(r);
-        }
+        if (cfg_.verbose) logLink(F("GetConfiguration"), r);
         if (r == LinkResult::Ok) break;
     }
-
+    /*
     if (cfg_.verbose) {
         Serial.print(F("Received packet from: 0x"));
-        char b[10];
-        sprintf(b, "%02x", rx.srcId);
+        char b[10]; sprintf(b, "%02x", rx.srcId);
         Serial.println(b);
 
         Serial.print(F("RSSI:\t\t"));
@@ -49,7 +45,7 @@ void Target::getConfigurationPhase() {
         Serial.print(F("Frequency Error:\t"));
         Serial.print(radio_.getFrequencyError()); Serial.println(F(" Hz"));
     }
-
+    */
     rangingPhase(rx);
 }
 

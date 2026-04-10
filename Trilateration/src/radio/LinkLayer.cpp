@@ -5,55 +5,26 @@ static inline void setLed(LinkContext& ctx, bool on) {
 }
 
 LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expectedType,
-    uint8_t expectedFrom, uint32_t timeoutMs) {
+    uint8_t expectedFrom, uint32_t timeout) {
 
     // ==================================
     // Await packet
     // ==================================
     uint8_t rxRaw[PACKET_SZ];
-
     setLed(ctx, true);
-
-    unsigned long timeout = timeoutMs * 1000;
     int state = ctx.radio.receive(rxRaw, PACKET_SZ, timeout);
-
     setLed(ctx, false);
     
     if (state == RADIOLIB_ERR_RX_TIMEOUT) return LinkResult::Timeout;
     if (state == RADIOLIB_ERR_CRC_MISMATCH) return LinkResult::CrcError;
-    if (state != RADIOLIB_ERR_NONE)  return LinkResult::RadioError;
+    if (state != RADIOLIB_ERR_NONE) return LinkResult::RadioError;
     
-    /* ctx.receivedFlag = false;
-    int state = ctx.radio.startReceive();
-    setLed(ctx, true);
-    int state = ctx.radio.startReceive();
-    if (state != RADIOLIB_ERR_NONE) {
-        return LinkResult::RadioError;
-    }
-        delay(timeoutMs);
-    ctx.receivedFlag = false;
-    while (!ctx.receivedFlag && retries > 0) {
-        delay(timeoutMs);
-        retries--;
-    }
-    setLed(ctx, false);
-        retries--;
-    if (!ctx.receivedFlag) {
-        return LinkResult::Timeout;
-    }
-    }
-    setLed(ctx, false);
-
-    if (!ctx.receivedFlag) return LinkResult::Timeout;
-    */
-
     // ==================================
     // Check received packet
     // ==================================
 
     size_t len = ctx.radio.getPacketLength();
     if (len != PACKET_SZ) return LinkResult::WrongPacketLength;
-
     if (!unpackControlPacket(rx, rxRaw))   return LinkResult::WrongContent;
     
     // ==================================
@@ -87,18 +58,15 @@ LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expec
     return LinkResult::Ok;
 }
 
-LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx, uint32_t timeoutMs) {
+LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx, uint32_t timeout) {
     // ==================================
     // Send Packet
     // ==================================
 
     uint8_t txRaw[PACKET_SZ];
     packControlPacket(tx, txRaw);
-
     int state = ctx.radio.transmit(txRaw, PACKET_SZ);
     if (state != RADIOLIB_ERR_NONE) return LinkResult::RadioError;
-
-    delay(1);
 
     // ==================================
     // Await Acknowledgement
@@ -107,8 +75,6 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx, uint32_t t
     uint8_t ackRaw[PACKET_SZ];
 
     setLed(ctx, true);
-
-    RadioLibTime_t timeout = timeoutMs * 1000;
     state = ctx.radio.receive(ackRaw, PACKET_SZ, timeout);
     setLed(ctx, false);
 
@@ -123,7 +89,6 @@ LinkResult sendAndAwaitAck(LinkContext& ctx, const ControlPacket& tx, uint32_t t
     ControlPacket ack;    
     size_t len = ctx.radio.getPacketLength();
     if (len != PACKET_SZ) return LinkResult::WrongPacketLength;
-
     if (!unpackControlPacket(ack, ackRaw)) return LinkResult::WrongContent;
    
     // ==================================

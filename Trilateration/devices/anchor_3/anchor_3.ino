@@ -1,12 +1,11 @@
 #include <RadioLib.h>
-#include "node/Anchor.h"
-#include "node/NodeConfig.h"
+#include <Trilateration.h>
 
 const bool    MAIN_MASTER = false;
 const bool    VERBOSE = true;
-const uint8_t DEVICE_ID = 0x02;
+const uint8_t DEVICE_ID = 0x03;
 const uint8_t TARGET_ID = 0xff;
-const char*   DEVICE_NAME = "feather-master-02";
+const char*   DEVICE_NAME = "feather-master-03";
 
 SX1280 radio = new Module(33, 26, 27, 25);
 

@@ -17,8 +17,12 @@ struct LinkContext {
     bool verbose;
 };
 
+// timeout takes values in microseconds in range 0x1-0xFFFF * 15.625 = [15.625:1023984.375], 
+// which is ~1 sec at max; 
+// due to RadioLib implementation, it is impossible for continuous Rx in blocking receive()
+// TODO: implement continuous Rx through startReceive() 
 LinkResult sendAndAwaitAck(LinkContext& ctx, 
-    const ControlPacket& tx, uint32_t timeoutMs = 5000);
+    const ControlPacket& tx, uint32_t timeout = 1000000);
 LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, 
-    PacketType expectedType, uint8_t expectedFrom = 0, uint32_t timeoutMs = 5000);
+    PacketType expectedType, uint8_t expectedFrom = 0, uint32_t timeout = 1000000);
 void printLinkResult(LinkResult res);

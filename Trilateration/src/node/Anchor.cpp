@@ -8,18 +8,8 @@
 #include "../config/Topology.h"
 #include "../calibration/calibration.h"
 
-
 Anchor::Anchor(SX1280& radio, const NodeConfig& cfg, uint8_t ledPin)
     : NodeBase(radio, cfg, ledPin, true) {}
-
-void Anchor::connectWiFiIfNeeded() {
-    if (WiFi.status() == WL_CONNECTED) return;
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(300);
-    }
-}
 
 void Anchor::begin() {
     Serial.begin(9600);
@@ -38,14 +28,23 @@ void Anchor::begin() {
 }
 
 void Anchor::loop() {
+    ControlPacket rx;
+
     if (cfg_.mainMaster && !started_) {
-        ControlPacket startPkt{PacketType::MasterDone, 0, 5, DEFAULT_SC, 
+        rx = {PacketType::MasterDone, 0, 5, DEFAULT_SC, 
             Topology::parentOf(cfg_.deviceId), cfg_.deviceId};
-        configureSlavePhase(startPkt);
         started_ = true;
+    } else {
+        rx = waitTurnPhase();
     }
 
-    waitTurnPhase();
+    configureSlavePhase(rx);
+    rangingPhase(rx);
+    passTurnPhase(rx);
+    while (!dataSendPhase(rx)) {
+        Serial.println(F("Trying to send to server"));
+        delay(500);
+    }
 }
 
 void Anchor::initRunId() {
@@ -63,7 +62,7 @@ void Anchor::advanceRunId() {
     prefs_.putULong("run_id", runId_);
 }
 
-void Anchor::waitTurnPhase() {
+ControlPacket Anchor::waitTurnPhase() {
     radio_.setBandwidth(DEFAULT_BW);
     radio_.setSpreadingFactor(DEFAULT_SF);
     radio_.setFrequency(DEFAULT_RF);
@@ -72,7 +71,7 @@ void Anchor::waitTurnPhase() {
     while (true) {
         LinkResult r = awaitAndSendAck(link_, rx, 
             PacketType::MasterDone, Topology::parentOf(cfg_.deviceId));
-        logLink(F("WaitTurn"), r);
+        if (cfg_.verbose) logLink(F("WaitTurn"), r);
         if (r == LinkResult::Ok) break;
     }
 
@@ -89,10 +88,14 @@ void Anchor::waitTurnPhase() {
         }
     }
 
-    configureSlavePhase(rx);
+    return rx;
 }
 
 void Anchor::configureSlavePhase(ControlPacket rx) {
+    radio_.setBandwidth(DEFAULT_BW);
+    radio_.setSpreadingFactor(DEFAULT_SF);
+    radio_.setFrequency(DEFAULT_RF);
+
     ControlPacket tx = rx;
     tx.type = PacketType::RangingRequest;
     tx.srcId = cfg_.deviceId;
@@ -100,37 +103,27 @@ void Anchor::configureSlavePhase(ControlPacket rx) {
 
     while (true) {
         LinkResult r = sendAndAwaitAck(link_, tx);
-        logLink(F("ConfigureSlave"), r);
+        if (cfg_.verbose) logLink(F("ConfigureSlave"), r);
         if (r == LinkResult::Ok) break;
     }
 
     freqError_ = radio_.getFrequencyError();
-    rangingPhase(rx);
 }
 
 uint8_t Anchor::rangingRssi() {
     uint8_t data[1] = { 0 };
     int state = radio_.readRegister(RADIOLIB_SX128X_REG_RANGING_RSSI, data, 1);  // 0x0964
-
-    if (state != RADIOLIB_ERR_NONE) 
-        Serial.println(F("Could not read rngRssi from the register"));
+    if (state != RADIOLIB_ERR_NONE) Serial.println(F("Could not read rngRssi from the register"));
 
     return data[0];
 }
 
 void Anchor::rangingPhase(ControlPacket rx) {
-    rngValid_ = 0;
-    rngTimeout_ = 0;
-    rngFail_ = 0;
+    rngValid_ = rngTimeout_ = rngFail_ = 0;
 
-    for (int i = 0; i < rx.sweepCount * TOTAL_CHNL; i++) {
-        rawRng_[i] = 0;
-        rngRssi_[i] = 0;
-    }
+    for (int i = 0; i < rx.sweepCount * TOTAL_CHNL; i++) rawRng_[i] = rngRssi_[i] = 0;
 
-    if (cfg_.verbose) {
-        Serial.println(F("Ranging ... "));
-    }
+    if (cfg_.verbose) Serial.println(F("Ranging ... "));
 
     radio_.setBandwidth(BW[rx.bwId] / 1000.0f);
     radio_.setSpreadingFactor(rx.sf);
@@ -139,26 +132,17 @@ void Anchor::rangingPhase(ControlPacket rx) {
         int chnCounter = 0;
         while (chnCounter < TOTAL_CHNL) {
             radio_.setFrequency(CHANNELS[chnCounter++]);
-
-            digitalWrite(LED_BUILTIN, HIGH);
             int state = radio_.range(true, cfg_.targetId /*, RNG_CALIB*/);
-            digitalWrite(LED_BUILTIN, LOW);
 
             if (state == RADIOLIB_ERR_NONE) {
                 rawRng_[rngValid_] = radio_.getRangingResultRaw();
                 rngRssi_[rngValid_] = rangingRssi();
 
                 rngValid_++;
-            } else if (state == RADIOLIB_ERR_RANGING_TIMEOUT) {
-                rngTimeout_++;
-            } else {
-                rngFail_++;
-            }
+            } else if (state == RADIOLIB_ERR_RANGING_TIMEOUT) rngTimeout_++;
+            else rngFail_++;
 
-            if (cfg_.verbose) {
-                Serial.print(" ");
-                Serial.print(chnCounter);
-            }
+            if (cfg_.verbose) { Serial.print(" "); Serial.print(chnCounter); }
         }
     }
 
@@ -170,11 +154,12 @@ void Anchor::rangingPhase(ControlPacket rx) {
         Serial.print(F("TimedOut:\t")); Serial.println(rngTimeout_);
         Serial.print(F("Failed:\t"));   Serial.println(rngFail_);
     }
-
-    passTurnPhase(rx);
 }
 
 void Anchor::passTurnPhase(ControlPacket rx) {
+    radio_.setBandwidth(DEFAULT_BW);
+    radio_.setSpreadingFactor(DEFAULT_SF);
+    radio_.setFrequency(DEFAULT_RF);
     ControlPacket tx = rx;
     tx.type = PacketType::MasterDone;
     tx.srcId = cfg_.deviceId;
@@ -182,11 +167,9 @@ void Anchor::passTurnPhase(ControlPacket rx) {
 
     while (true) {
         LinkResult r = sendAndAwaitAck(link_, tx);
-        logLink(F("PassTurn"), r);
+        if (cfg_.verbose) logLink(F("PassTurn"), r);
         if (r == LinkResult::Ok) break;
     }
-
-    while (!dataSendPhase(rx)) {}
 }
 
 bool Anchor::appendJsonf(char* out, size_t cap, size_t* pos, const char* fmt, ...) {
@@ -216,10 +199,11 @@ bool Anchor::buildRangingJsonBuffer(char* out, size_t cap,
     uint8_t bwSf = (uint8_t)(((bwId & 0x0F) << 4) | (sf & 0x0F));
 
     if (!appendJsonf(out, cap, &pos,
-                    "{\"run_id\":%lu,\"device_id\":%u,\"target_id\":%u,"
+                    "{\"run_id\":%lu,\"device_name\":\"%s\",\"device_id\":%u,\"target_id\":%u,"
                     "\"bw_sf\":%u,\"freqError\":%.6f,\"sweepCount\":%u,"
                     "\"valid\":%u,\"timeout\":%u,\"fail\":%u,\"raw_rng\":[",
                     (unsigned long) runId_,
+                    cfg_.deviceName,
                     (unsigned)cfg_.deviceId,
                     (unsigned)cfg_.targetId,
                     (unsigned)bwSf,
@@ -250,13 +234,13 @@ bool Anchor::buildRangingJsonBuffer(char* out, size_t cap,
 bool Anchor::dataSendPhase(ControlPacket rx) {
     connectWiFiIfNeeded();
 
-    char payload[6144];
+    char payload[2048];
     size_t payloadLen = 0;
 
     if (!buildRangingJsonBuffer(payload, sizeof(payload), 
         &payloadLen, rx.bwId, rx.sf, rx.sweepCount)) {
 
-        Serial.println(F("JSON build failed: buffer too small"));
+        if (cfg_.verbose) Serial.println(F("JSON build failed: buffer too small"));
         return false;
     }
 
@@ -277,4 +261,13 @@ bool Anchor::dataSendPhase(ControlPacket rx) {
         return false;
     }
     return true;
+}
+
+void Anchor::connectWiFiIfNeeded() {
+    if (WiFi.status() == WL_CONNECTED) return;
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(300);
+    }
 }

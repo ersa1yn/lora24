@@ -23,7 +23,7 @@ private:
     void initRunId();
     void advanceRunId();
 
-    void waitTurnPhase();
+    ControlPacket waitTurnPhase();
     void configureSlavePhase(ControlPacket rx);
     uint8_t rangingRssi();
     void rangingPhase(ControlPacket rx);

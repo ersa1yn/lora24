@@ -1,6 +1,5 @@
+#include <Trilateration.h>
 #include <RadioLib.h>
-#include "node/Anchor.h"
-#include "node/NodeConfig.h"
 
 const bool    MAIN_MASTER = true;
 const bool    VERBOSE = true;

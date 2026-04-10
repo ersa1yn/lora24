@@ -1,6 +1,5 @@
 #include <RadioLib.h>
-#include "node/Target.h"
-#include "node/NodeConfig.h"
+#include <Trilateration.h>
 
 const bool    VERBOSE = true;
 const uint8_t DEVICE_ID = 0xff;
