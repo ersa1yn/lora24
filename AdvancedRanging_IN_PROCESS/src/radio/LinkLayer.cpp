@@ -4,6 +4,10 @@ static inline void setLed(LinkContext& ctx, bool on) {
     if (ctx.useLed) digitalWrite(ctx.ledPin, on ? HIGH : LOW);
 }
 
+LinkResult wait(LinkContext& ctx, ControlPacket& rx) {
+
+}
+
 LinkResult awaitAndSendAck(LinkContext& ctx, ControlPacket& rx, PacketType expectedType,
     uint8_t expectedFrom, uint32_t timeout) {
 
